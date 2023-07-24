@@ -111,3 +111,139 @@ my_function <- function(lon, lat, site) {
               append = TRUE, col.names = F, sep = ", ", quote = TRUE)          # Export table, with append=TRUE it adds coulmns to an existing table 
   return(Data_annual) # SAVE AGGREGATED DATA FRAME 
 }
+
+
+###################################### AVERAGE YEAR  Daily ##############################################
+###################################### AVERAGE YEAR  Daily ##############################################
+###################################### AVERAGE YEAR  Daily ##############################################
+
+
+
+
+
+
+slope=raster('slope_1KMmd_GMTEDmd.tif')
+elevation=raster('elevation_1KMmd_GMTEDmd.tif')
+
+slope_info=terra::extract(slope, data[,c('lon','lat')]) %>% as.data.frame() %>% mutate(site_id= 1:nrow(data))
+colnames(slope_info)[1]= 'slope'
+elevation_info=terra::extract(elevation, data[,c('lon','lat')])%>% as.data.frame()%>% mutate(site_id= 1:nrow(data))
+colnames(elevation_info)[1]= 'elevation'
+
+
+
+info <- data1 %>% distinct(Latitude, Longitude, .keep_all = TRUE) %>% drop_na()
+
+data$site_id = 1:nrow(data)
+
+unique(data$site_id)
+table(info$Mapping_Ye)
+range(info$Mapping_Ye)
+
+colnames(data)[16] = 'lat'
+colnames(data)[17] = 'lon'
+
+
+data$Year <- format(data$Pozorovani, "%Y")
+data$Month <- format(data$Pozorovani, "%m")
+data$Day <- format(data$Pozorovani, "%d")
+
+data=data %>% filter(!site_id %in% c('907','908'))
+extract_temp <- function(data, ncfile) {
+  
+  # Inicializa el dataframe de resultados
+  result <- data.frame(
+    Taxón = character(),
+    Pozorovani = as.Date(character()),
+    Mapping_Ye = numeric(),
+    lat = numeric(),
+    lon = numeric(),
+    site_id = integer(),
+    temperature = numeric(),
+    stringsAsFactors = FALSE
+  )
+  
+  # Recorre cada fila en los datos
+  for (i in 1:nrow(data)) {
+    
+    # Obtiene las coordenadas y año del punto de muestreo
+    lon <- data$lon[i]
+    lat <- data$lat[i]
+    year <- data$Mapping_Ye[i]
+    
+    # Encuentra los índices correspondientes en el archivo netCDF
+    lon_index <- which.min(abs(ncfile$dim$longitude$vals - lon))
+    lat_index <- which.min(abs(ncfile$dim$latitude$vals - lat))
+    
+    # Convierte los tiempos del archivo netCDF a fechas y encuentra los índices del inicio y final del año
+    time_vals <- as.Date(ncfile$dim$time$vals, origin = "1950-01-01")
+    start_index <- which(time_vals == as.Date(paste(year, "01", "01", sep = "-")))
+    end_index <- which(time_vals == as.Date(paste(year, "12", "31", sep = "-")))
+    
+    # Si start_index o end_index son NULL (es decir, no se encontraron coincidencias), pasa a la siguiente iteración del bucle
+    if (is.null(start_index) | is.null(end_index)) {
+      next
+    }
+    
+    # Obtiene la temperatura media del año
+    temp <- mean(ncvar_get(ncfile, "rr", start = c(lon_index, lat_index, start_index), count = c(1, 1, end_index - start_index + 1)))
+    
+    # Agrega los resultados al dataframe
+    result <- rbind(result, data.frame(
+      Taxón = data$Taxón[i],
+      Pozorovani = as.Date(data$Pozorovani[i]),
+      Mapping_Ye = data$Mapping_Ye[i],
+      lat = data$lat[i],
+      lon = data$lon[i],
+      site_id = data$site_id[i],
+      temperature = temp
+    ))
+    cat('*')
+  }
+  
+  return(result)
+}
+
+
+
+
+# Abre el archivo netCDF
+ncfile <- nc_open("TG_mean.nc")
+ncfile <- nc_open("tx_ens_mean_0.25deg_reg_v27.0e.nc")
+ncfile <- nc_open("tn_ens_mean_0.25deg_reg_v27.0e.nc")
+ncfile <- nc_open("rr_ens_mean_0.25deg_reg_v27.0e.nc")
+
+# Carga tus datos de muestreo
+# data <- read_csv("tu_archivo.csv") # remplaza esto con tu archivo de datos
+
+# Aplica la función para extraer la temperatura
+result <- extract_temp(data, ncfile)
+result1 <- extract_temp(data, ncfile)
+result2 <- extract_temp(data, ncfile)
+result3 <- extract_temp(data, ncfile)
+
+# Cierra el archivo netCDF cuando hayas terminado
+nc_close(ncfile)
+
+str(info)
+write_csv2(result, 'Temp_Kouba.csv')
+
+
+colnames(result)[7] = 'Temp_avg'
+colnames(result1)[7] = 'Temp_max'
+colnames(result2)[7] = 'Temp_min'
+colnames(result3)[7] = 'Prec'
+
+result1 = result1[, c(6,7)]
+result2 = result2[, c(6,7)]
+result3 = result3[, c(6,7)]
+
+slope_info = slope_info %>% drop_na()
+elevation_info = elevation_info %>% drop_na()
+
+z= cbind(result,result1,result2,result3, slope_info,elevation_info)
+z = z[,-c(8,10,12,15,17)]
+write.csv2(z, 'Climatic_data.csv')
+
+
+
